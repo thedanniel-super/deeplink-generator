@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Superbet Deeplink Generator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;450;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="shell">
+    <header class="masthead">
+      <div class="brand">
+        <span class="brand-mark">⌁</span>
+        <span class="brand-name">Superbet</span>
+        <span class="brand-sub">Deeplink Generator</span>
+      </div>
+      <p class="masthead-note">Build native <code>superbetsport://</code> / <code>superbetgames://</code> links. Toggle parameters, copy, ship.</p>
+    </header>
+
+    <!-- HERO: the live link -->
+    <section class="hero" aria-live="polite">
+      <div class="hero-label">Generated deeplink</div>
+      <div class="hero-link" id="heroLink"></div>
+      <div class="hero-actions">
+        <button class="btn btn-primary" id="copyLink" type="button">Copy link</button>
+        <button class="btn btn-ghost" id="copyEncoded" type="button">Copy URL-encoded</button>
+      </div>
+      <div class="hero-encoded">
+        <span class="hero-encoded-label">Encoded (AppsFlyer additional deep link value)</span>
+        <code id="encodedLink"></code>
+      </div>
+    </section>
+
+    <main class="grid">
+      <!-- CONFIG -->
+      <div class="panel">
+        <h2 class="panel-title"><span class="step">01</span> Target</h2>
+
+        <div class="field">
+          <label for="product">Product</label>
+          <div class="seg" id="productSeg" role="radiogroup" aria-label="Product">
+            <button type="button" class="seg-btn is-active" data-val="superbetsport">Sportsbook</button>
+            <button type="button" class="seg-btn" data-val="superbetgames">Games / Casino</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="domain">Domain</label>
+          <select id="domain">
+            <option value="br" selected>br — Brazil</option>
+            <option value="ro">ro — Romania</option>
+            <option value="pl">pl — Poland</option>
+            <option value="rs">rs — Serbia</option>
+            <option value="com">com — Global</option>
+            <option value="ronapoleongames">ronapoleongames</option>
+          </select>
+          <p class="hint">Napoleon presets: <code>benapoleongames://</code> (sports), <code>benapoleoncasino//</code> (games). Pick a section below to use them.</p>
+        </div>
+
+        <h2 class="panel-title"><span class="step">02</span> Section</h2>
+        <div class="field">
+          <label for="section">Destination</label>
+          <select id="section"></select>
+          <p class="hint" id="sectionHint"></p>
+        </div>
+
+        <div class="field" id="customPathField" hidden>
+          <label for="customPath">Custom path</label>
+          <input type="text" id="customPath" placeholder="e.g. liveCasino or promotions/welcome" autocomplete="off" />
+        </div>
+      </div>
+
+      <!-- PARAMETERS -->
+      <div class="panel">
+        <h2 class="panel-title"><span class="step">03</span> Parameters</h2>
+
+        <div id="presetParams" class="params"></div>
+
+        <div class="divider"><span>Custom parameters</span></div>
+        <div id="customParams" class="params"></div>
+        <button type="button" class="btn btn-add" id="addParam">+ Add parameter</button>
+
+        <div class="warn">
+          <strong>Heads up.</strong> Deeplinks pointing to a web URL (e.g. <code>…://web?link=https://…</code>) are stripped from native apps to block phishing. For Mobius push, the scheme is auto-filled — you can omit it.
+        </div>
+      </div>
+    </main>
+
+    <footer class="foot">
+      Reference: Deep Links user guide · Deeplinks table (Notion). Verify in a native build before shipping a campaign.
+    </footer>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="scripts.js"></script>
+</body>
+</html>
