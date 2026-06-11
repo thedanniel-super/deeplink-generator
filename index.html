@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Superbet · Gerador de Deeplink</title>
+  <title>Superbet · Deeplink Generator</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;450;500;600&display=swap" rel="stylesheet" />
@@ -15,52 +15,52 @@
       <div class="brand">
         <span class="brand-mark">&#9089;</span>
         <span class="brand-name">Superbet</span>
-        <span class="brand-sub">Gerador de Deeplink</span>
+        <span class="brand-sub">Deeplink Generator</span>
       </div>
-      <p class="masthead-note">Cole o link de uma p&aacute;gina do site e gere o deeplink nativo (<code>superbetsport://</code> / <code>superbetgames://</code>).</p>
+      <p class="masthead-note">Paste a site page link and generate the native deeplink (<code>superbetsport://</code> / <code>superbetgames://</code>).</p>
     </header>
 
     <!-- HERO: URL input -> deeplink -->
     <section class="hero">
-      <label class="hero-label" for="pageUrl">Link da p&aacute;gina</label>
+      <label class="hero-label" for="pageUrl">Page link</label>
       <input type="text" id="pageUrl" class="url-input" placeholder="https://superbet.bet.br/jogos-gratis/calendar-game"
              value="https://superbet.bet.br/jogos-gratis/calendar-game" autocomplete="off" spellcheck="false" />
       <div class="match-row" id="matchRow"></div>
 
       <div class="hero-divider"></div>
 
-      <div class="hero-out-label">Deeplink gerado</div>
+      <div class="hero-out-label">Generated deeplink</div>
       <div class="hero-link" id="heroLink" aria-live="polite"></div>
       <div class="hero-actions">
-        <button class="btn btn-primary" id="copyLink" type="button">Copiar deeplink</button>
-        <button class="btn btn-ghost" id="copyEncoded" type="button">Copiar URL-encoded</button>
+        <button class="btn btn-primary" id="copyLink" type="button">Copy deeplink</button>
+        <button class="btn btn-ghost" id="copyEncoded" type="button">Copy URL-encoded</button>
       </div>
       <div class="hero-encoded">
-        <span class="hero-encoded-label">Encoded (valor "additional deep link" do AppsFlyer)</span>
+        <span class="hero-encoded-label">Encoded (AppsFlyer "additional deep link" value)</span>
         <code id="encodedLink"></code>
       </div>
     </section>
 
     <!-- ADJUST -->
     <main class="panel">
-      <h2 class="panel-title"><span class="step">Ajustes</span> Revise o que foi detectado</h2>
+      <h2 class="panel-title"><span class="step">Adjust</span> Review what was detected</h2>
 
       <div class="adjust-grid">
         <div class="field">
-          <label for="market">Mercado (do dom&iacute;nio)</label>
+          <label for="market">Market (from domain)</label>
           <select id="market">
-            <option value="br">br &mdash; Brasil</option>
-            <option value="ro">ro &mdash; Rom&ecirc;nia</option>
-            <option value="pl">pl &mdash; Pol&ocirc;nia</option>
-            <option value="rs">rs &mdash; S&eacute;rvia</option>
+            <option value="br">br &mdash; Brazil</option>
+            <option value="ro">ro &mdash; Romania</option>
+            <option value="pl">pl &mdash; Poland</option>
+            <option value="rs">rs &mdash; Serbia</option>
             <option value="com">com &mdash; Global</option>
             <option value="ronapoleongames">ronapoleongames</option>
           </select>
         </div>
 
         <div class="field">
-          <label>Produto</label>
-          <div class="seg" id="productSeg" role="radiogroup" aria-label="Produto">
+          <label>Product</label>
+          <div class="seg" id="productSeg" role="radiogroup" aria-label="Product">
             <button type="button" class="seg-btn" data-val="superbetsport">Sportsbook</button>
             <button type="button" class="seg-btn" data-val="superbetgames">Games / Casino</button>
           </div>
@@ -68,22 +68,22 @@
       </div>
 
       <div class="field">
-        <label for="dlPath">Caminho do deeplink</label>
-        <input type="text" id="dlPath" placeholder="ex.: freeToPlay" autocomplete="off" spellcheck="false" />
+        <label for="dlPath">Deeplink path</label>
+        <input type="text" id="dlPath" placeholder="e.g. freeToPlay" autocomplete="off" spellcheck="false" />
         <p class="hint" id="pathHint"></p>
       </div>
 
-      <div class="divider"><span>Par&acirc;metros</span></div>
+      <div class="divider"><span>Parameters</span></div>
       <div id="paramsBox" class="params"></div>
-      <button type="button" class="btn btn-add" id="addParam">+ Adicionar par&acirc;metro</button>
+      <button type="button" class="btn btn-add" id="addParam">+ Add parameter</button>
 
       <div class="warn">
-        <strong>Aten&ccedil;&atilde;o.</strong> Deeplinks que apontam para uma URL web (ex.: <code>&hellip;://web?link=https://&hellip;</code>) s&atilde;o removidos dos apps nativos para evitar phishing. Em push do Mobius o esquema &eacute; preenchido automaticamente.
+        <strong>Heads up.</strong> Deeplinks pointing to a web URL (e.g. <code>&hellip;://web?link=https://&hellip;</code>) are stripped from native apps to block phishing. For Mobius push, the scheme is auto-filled.
       </div>
     </main>
 
     <footer class="foot">
-      Refer&ecirc;ncia: Deep Links user guide &middot; Deeplinks table (Notion). Mapeamentos n&atilde;o confirmados aparecem como "melhor estimativa" &mdash; valide num build nativo.
+      Reference: Deep Links user guide &middot; Deeplinks table (Notion). Unconfirmed mappings show as "best guess" &mdash; verify in a native build.
     </footer>
   </div>
 

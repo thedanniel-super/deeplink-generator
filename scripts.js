@@ -1,11 +1,11 @@
 "use strict";
 
 /* =====================================================================
-   MAPEAMENTO URL -> DEEPLINK
-   Cada regra testa o caminho (path) da URL. A primeira que casar vence.
-   `exact: true`  -> mapeamento confirmado na documentacao.
-   `exact: false` -> melhor estimativa (revise antes de usar).
-   Para adicionar uma rota nova, basta acrescentar um objeto aqui.
+   URL -> DEEPLINK MAPPING
+   Each rule tests the URL path. First match wins.
+   `exact: true`  -> mapping confirmed in the documentation.
+   `exact: false` -> best guess (review before using).
+   To add a new route, just append an object here.
 ===================================================================== */
 const RULES = [
   {
@@ -35,7 +35,7 @@ const RULES = [
   }
 ];
 
-/* dominio -> mercado */
+/* domain -> market */
 function detectMarket(host) {
   host = (host || "").toLowerCase();
   if (/\.br$/.test(host) || host.includes(".bet.br")) return "br";
@@ -47,10 +47,10 @@ function detectMarket(host) {
   return "br";
 }
 
-/* remove prefixo de locale tipo /pt-br/ ou /en/ */
+/* strip a leading locale prefix like /pt-br/ or /en/ */
 function stripLocale(path) {
   return path.replace(/^([a-z]{2}(-[a-z]{2})?)\//i, (full, code) => {
-    // nao remover se parecer uma secao real
+    // don't strip if it looks like a real section
     return /^(pt|en|ro|pl|rs|sr|hr|br|us|gb|de)(-[a-z]{2})?$/i.test(code) ? "" : full;
   });
 }
@@ -60,14 +60,14 @@ function kebabToCamel(s) {
 }
 
 /* =====================================================================
-   ESTADO
+   STATE
 ===================================================================== */
 let state = {
   market: "br",
   product: "superbetsport",
   path: "freeToPlay",
   params: [],          // [{key, kind:'text'|'bool', value}]
-  match: null          // {label, exact} | null | 'error'
+  match: null          // {label, exact} | 'empty' | 'error'
 };
 
 const $ = (id) => document.getElementById(id);
@@ -86,7 +86,7 @@ function escapeHtml(str) {
 }
 
 /* =====================================================================
-   PARSE: URL -> estado
+   PARSE: URL -> state
 ===================================================================== */
 function parseUrl() {
   const raw = urlInput.value.trim();
@@ -103,7 +103,7 @@ function parseUrl() {
   let path = u.pathname.replace(/^\/+/, "").replace(/\/+$/, "");
   path = stripLocale(path);
 
-  // tenta casar uma regra
+  // try to match a rule
   let matched = null;
   for (const r of RULES) {
     const m = path.match(r.test);
@@ -118,13 +118,13 @@ function parseUrl() {
   }
 
   if (!matched) {
-    // estimativa generica
+    // generic best guess
     const segs = path.split("/").filter(Boolean);
     const isGames = /(cassino|casino|slots|games|jogos)/i.test(path) && !/jogos-gratis/i.test(path);
     state.product = isGames ? "superbetgames" : "superbetsport";
     state.path = segs.length ? kebabToCamel(segs[0]) : "";
     state.params = segs.length > 1 ? [{ key: "id", kind: "text", value: segs.slice(1).join("/") }] : [];
-    matched = path ? { label: "Estimativa (rota nao mapeada)", exact: false } : { label: "Home do app", exact: true };
+    matched = path ? { label: "Best guess (unmapped route)", exact: false } : { label: "App home", exact: true };
   }
 
   state.match = matched;
@@ -132,7 +132,7 @@ function parseUrl() {
 }
 
 /* =====================================================================
-   SYNC: estado -> controles -> saida
+   SYNC: state -> controls -> output
 ===================================================================== */
 function syncControls() {
   marketSel.value = state.market;
@@ -144,14 +144,14 @@ function syncControls() {
 }
 
 function renderMatch() {
-  if (state.match === "empty") { matchRow.innerHTML = '<span class="match-detail">Cole um link para comecar.</span>'; return; }
-  if (state.match === "error") { matchRow.innerHTML = '<span class="tag err">URL invalida</span><span class="match-detail">Verifique o link colado.</span>'; return; }
+  if (state.match === "empty") { matchRow.innerHTML = '<span class="match-detail">Paste a link to start.</span>'; return; }
+  if (state.match === "error") { matchRow.innerHTML = '<span class="tag err">Invalid URL</span><span class="match-detail">Check the pasted link.</span>'; return; }
   const m = state.match;
   const cls = m.exact ? "exact" : "guess";
-  const txt = m.exact ? "mapeamento confirmado" : "revise os campos abaixo";
-  matchRow.innerHTML = `<span class="tag ${cls}">${m.exact ? "exato" : "estimativa"}</span>` +
+  const txt = m.exact ? "confirmed mapping" : "review the fields below";
+  matchRow.innerHTML = `<span class="tag ${cls}">${m.exact ? "exact" : "best guess"}</span>` +
     `<span class="match-detail">${escapeHtml(m.label)} &middot; ${txt}</span>`;
-  pathHint.textContent = m.exact ? "" : "Caminho deduzido do link \u2014 ajuste se necessario.";
+  pathHint.textContent = m.exact ? "" : "Path inferred from the link \u2014 adjust if needed.";
 }
 
 function renderParams() {
@@ -161,13 +161,13 @@ function renderParams() {
     row.className = "cparam" + (c.kind === "bool" ? " is-bool" : "");
 
     const keyInput = document.createElement("input");
-    keyInput.type = "text"; keyInput.placeholder = "chave"; keyInput.value = c.key; keyInput.autocomplete = "off";
+    keyInput.type = "text"; keyInput.placeholder = "key"; keyInput.value = c.key; keyInput.autocomplete = "off";
     keyInput.addEventListener("input", () => { c.key = keyInput.value; build(); });
 
     const typeWrap = document.createElement("div");
     typeWrap.className = "cp-type";
     const typeSel = document.createElement("select");
-    typeSel.innerHTML = '<option value="text">valor</option><option value="bool">checkbox</option>';
+    typeSel.innerHTML = '<option value="text">value</option><option value="bool">checkbox</option>';
     typeSel.value = c.kind;
     typeSel.addEventListener("change", () => {
       c.kind = typeSel.value;
@@ -183,12 +183,12 @@ function renderParams() {
       valueControl.className = "bool-wrap";
       const sw = document.createElement("label");
       sw.className = "switch";
-      sw.innerHTML = `<input type="checkbox" ${c.value ? "checked" : ""} aria-label="valor de ${escapeHtml(c.key)}" /><span class="track"></span>`;
+      sw.innerHTML = `<input type="checkbox" ${c.value ? "checked" : ""} aria-label="value of ${escapeHtml(c.key)}" /><span class="track"></span>`;
       sw.querySelector("input").addEventListener("change", (e) => { c.value = e.target.checked; build(); });
       valueControl.appendChild(sw);
     } else {
       valueControl = document.createElement("input");
-      valueControl.type = "text"; valueControl.placeholder = "valor";
+      valueControl.type = "text"; valueControl.placeholder = "value";
       valueControl.value = typeof c.value === "string" ? c.value : "";
       valueControl.autocomplete = "off";
       valueControl.addEventListener("input", () => { c.value = valueControl.value; build(); });
@@ -196,7 +196,7 @@ function renderParams() {
 
     const remove = document.createElement("button");
     remove.type = "button"; remove.className = "cp-remove"; remove.textContent = "\u00D7";
-    remove.setAttribute("aria-label", "Remover parametro");
+    remove.setAttribute("aria-label", "Remove parameter");
     remove.addEventListener("click", () => { state.params.splice(idx, 1); renderParams(); build(); });
 
     row.append(keyInput, typeWrap, valueControl, remove);
@@ -205,7 +205,7 @@ function renderParams() {
 }
 
 /* =====================================================================
-   BUILD: monta o deeplink
+   BUILD: assemble the deeplink
 ===================================================================== */
 function build() {
   const scheme = state.market + state.product + "://";
@@ -236,7 +236,7 @@ function build() {
 }
 
 /* =====================================================================
-   COPIAR + TOAST
+   COPY + TOAST
 ===================================================================== */
 function toast(msg) {
   const t = $("toast");
@@ -253,11 +253,11 @@ async function copy(text, label) {
     ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
     document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta);
   }
-  toast(label + " copiado");
+  toast(label + " copied");
 }
 
 /* =====================================================================
-   EVENTOS
+   EVENTS
 ===================================================================== */
 urlInput.addEventListener("input", parseUrl);
 marketSel.addEventListener("change", () => { state.market = marketSel.value; build(); });
@@ -271,7 +271,7 @@ productSeg.addEventListener("click", (e) => {
 });
 $("addParam").addEventListener("click", () => { state.params.push({ key: "", kind: "text", value: "" }); renderParams(); build(); });
 $("copyLink").addEventListener("click", () => copy(heroLink.dataset.plain || "", "Deeplink"));
-$("copyEncoded").addEventListener("click", () => copy(encodedLink.textContent || "", "Link encoded"));
+$("copyEncoded").addEventListener("click", () => copy(encodedLink.textContent || "", "Encoded link"));
 
 /* boot */
 parseUrl();
