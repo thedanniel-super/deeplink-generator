@@ -1,311 +1,277 @@
 "use strict";
 
-/* ---------------------------------------------------------------
-   Data model
-----------------------------------------------------------------*/
-const SECTIONS = [
+/* =====================================================================
+   MAPEAMENTO URL -> DEEPLINK
+   Cada regra testa o caminho (path) da URL. A primeira que casar vence.
+   `exact: true`  -> mapeamento confirmado na documentacao.
+   `exact: false` -> melhor estimativa (revise antes de usar).
+   Para adicionar uma rota nova, basta acrescentar um objeto aqui.
+===================================================================== */
+const RULES = [
   {
-    id: "freeToPlay",
-    label: "Free To Play game",
-    path: "freeToPlay",
-    hint: "Betler markets (incl. Brazil). e.g. brsuperbetsport://freeToPlay?gameId=calendar-game&shouldLoginToPlay=false",
-    params: [
-      { key: "gameId", kind: "text", label: "Game ID", placeholder: "calendar-game", required: true },
-      { key: "shouldLoginToPlay", kind: "bool", label: "Require login to play", value: false }
-    ]
+    label: "Free To Play (jogos-gratis)",
+    test: /^jogos-gratis\/([^\/?#]+)/i,
+    exact: true,
+    build: (m) => ({
+      product: "superbetsport",
+      path: "freeToPlay",
+      params: [
+        { key: "gameId", kind: "text", value: m[1] },
+        { key: "shouldLoginToPlay", kind: "bool", value: false }
+      ]
+    })
   },
-  { id: "liveCasino", label: "Live Casino", path: "liveCasino", hint: "Sportsbook app section.", params: [] },
-  { id: "multiBetBuilder", label: "Multi Bet Builder", path: "multiBetBuilder", hint: "Sportsbook app section.", params: [] },
-  { id: "adventCalendar", label: "Advent Calendar (legacy RO)", path: "adventCalendar", hint: "Legacy shorthand. New markets use Free To Play.", params: [] },
   {
-    id: "games",
-    label: "Casino game (external ID)",
-    path: "games",
-    hint: "Games app. e.g. rosuperbetgames://games?externalId=icore_1253_ro",
-    params: [{ key: "externalId", kind: "text", label: "External game ID", placeholder: "icore_1253_ro", required: true }]
+    label: "Live Casino",
+    test: /^(?:cassino-ao-vivo|live-casino)(?:\/|$)/i,
+    exact: true,
+    build: () => ({ product: "superbetsport", path: "liveCasino", params: [] })
   },
-  { id: "home", label: "App home", path: "", hint: "Opens the app with no specific destination.", params: [] },
-  { id: "custom", label: "Custom path…", path: "", custom: true, hint: "Type any section path manually.", params: [] }
+  {
+    label: "Multi Bet Builder",
+    test: /^(?:multi-bet-builder|criar-aposta)(?:\/|$)/i,
+    exact: false,
+    build: () => ({ product: "superbetsport", path: "multiBetBuilder", params: [] })
+  }
 ];
 
-/* live state for preset params, keyed by param key */
-let presetState = {};
-/* custom params: array of {key, kind, value} */
-let customState = [];
+/* dominio -> mercado */
+function detectMarket(host) {
+  host = (host || "").toLowerCase();
+  if (/\.br$/.test(host) || host.includes(".bet.br")) return "br";
+  if (/\.ro$/.test(host)) return "ro";
+  if (/\.pl$/.test(host)) return "pl";
+  if (/\.rs$/.test(host)) return "rs";
+  if (/napoleon/.test(host)) return "ronapoleongames";
+  if (/\.com$/.test(host)) return "com";
+  return "br";
+}
 
-/* ---------------------------------------------------------------
-   DOM refs
-----------------------------------------------------------------*/
+/* remove prefixo de locale tipo /pt-br/ ou /en/ */
+function stripLocale(path) {
+  return path.replace(/^([a-z]{2}(-[a-z]{2})?)\//i, (full, code) => {
+    // nao remover se parecer uma secao real
+    return /^(pt|en|ro|pl|rs|sr|hr|br|us|gb|de)(-[a-z]{2})?$/i.test(code) ? "" : full;
+  });
+}
+
+function kebabToCamel(s) {
+  return s.replace(/-([a-z0-9])/gi, (_, c) => c.toUpperCase());
+}
+
+/* =====================================================================
+   ESTADO
+===================================================================== */
+let state = {
+  market: "br",
+  product: "superbetsport",
+  path: "freeToPlay",
+  params: [],          // [{key, kind:'text'|'bool', value}]
+  match: null          // {label, exact} | null | 'error'
+};
+
 const $ = (id) => document.getElementById(id);
+const urlInput = $("pageUrl");
+const marketSel = $("market");
 const productSeg = $("productSeg");
-const domainSel = $("domain");
-const sectionSel = $("section");
-const sectionHint = $("sectionHint");
-const customPathField = $("customPathField");
-const customPathInput = $("customPath");
-const presetParamsBox = $("presetParams");
-const customParamsBox = $("customParams");
+const dlPath = $("dlPath");
+const pathHint = $("pathHint");
+const paramsBox = $("paramsBox");
+const matchRow = $("matchRow");
 const heroLink = $("heroLink");
 const encodedLink = $("encodedLink");
 
-let product = "superbetsport";
-
-/* ---------------------------------------------------------------
-   Init: populate section dropdown
-----------------------------------------------------------------*/
-SECTIONS.forEach((s) => {
-  const opt = document.createElement("option");
-  opt.value = s.id;
-  opt.textContent = s.label;
-  sectionSel.appendChild(opt);
-});
-sectionSel.value = "freeToPlay";
-
-/* ---------------------------------------------------------------
-   Helpers
-----------------------------------------------------------------*/
-function currentSection() {
-  return SECTIONS.find((s) => s.id === sectionSel.value);
-}
-
 function escapeHtml(str) {
-  return String(str).replace(/[&<>"]/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])
-  );
+  return String(str).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 }
 
-/* collect all params -> [{key, value, isPlaceholder}] */
-function collectParams() {
-  const out = [];
-  const section = currentSection();
+/* =====================================================================
+   PARSE: URL -> estado
+===================================================================== */
+function parseUrl() {
+  const raw = urlInput.value.trim();
+  if (!raw) { state.match = "empty"; syncControls(); return; }
 
-  section.params.forEach((p) => {
-    if (p.kind === "bool") {
-      out.push({ key: p.key, value: presetState[p.key] ? "true" : "false" });
-    } else {
-      const raw = (presetState[p.key] || "").trim();
-      if (raw) out.push({ key: p.key, value: raw });
-      else if (p.placeholder) out.push({ key: p.key, value: p.placeholder, isPlaceholder: true });
-    }
-  });
-
-  customState.forEach((c) => {
-    const key = (c.key || "").trim();
-    if (!key) return;
-    if (c.kind === "bool") {
-      out.push({ key, value: c.value ? "true" : "false" });
-    } else {
-      const v = (c.value || "").trim();
-      if (v) out.push({ key, value: v });
-    }
-  });
-
-  return out;
-}
-
-function getPath() {
-  const section = currentSection();
-  if (section.custom) return customPathInput.value.trim();
-  return section.path;
-}
-
-/* ---------------------------------------------------------------
-   Build outputs
-----------------------------------------------------------------*/
-function build() {
-  const scheme = domainSel.value + product + "://";
-  const path = getPath();
-  const params = collectParams();
-  const query = params.map((p) => `${p.key}=${p.value}`).join("&");
-  const plain = scheme + path + (query ? "?" + query : "");
-
-  // --- hero (tokenized) ---
-  let html = `<span class="tok-scheme">${escapeHtml(scheme)}</span>`;
-  html += `<span class="tok-path">${escapeHtml(path)}</span>`;
-  if (params.length) {
-    html += `<span class="tok-sep">?</span>`;
-    params.forEach((p, i) => {
-      if (i > 0) html += `<span class="tok-sep">&amp;</span>`;
-      const valClass = p.isPlaceholder ? "tok-val placeholder" : "tok-val";
-      html += `<span class="tok-key">${escapeHtml(p.key)}</span><span class="tok-sep">=</span><span class="${valClass}">${escapeHtml(p.value)}</span>`;
-    });
+  let u;
+  try {
+    u = new URL(/^https?:\/\//i.test(raw) ? raw : "https://" + raw);
+  } catch {
+    state.match = "error"; syncControls(); return;
   }
-  heroLink.innerHTML = html;
 
-  // --- encoded ---
-  encodedLink.textContent = encodeURIComponent(plain);
+  state.market = detectMarket(u.hostname);
+  let path = u.pathname.replace(/^\/+/, "").replace(/\/+$/, "");
+  path = stripLocale(path);
 
-  // stash for copy
-  heroLink.dataset.plain = plain;
+  // tenta casar uma regra
+  let matched = null;
+  for (const r of RULES) {
+    const m = path.match(r.test);
+    if (m) {
+      const res = r.build(m);
+      state.product = res.product;
+      state.path = res.path;
+      state.params = res.params.map((p) => ({ ...p }));
+      matched = { label: r.label, exact: r.exact };
+      break;
+    }
+  }
+
+  if (!matched) {
+    // estimativa generica
+    const segs = path.split("/").filter(Boolean);
+    const isGames = /(cassino|casino|slots|games|jogos)/i.test(path) && !/jogos-gratis/i.test(path);
+    state.product = isGames ? "superbetgames" : "superbetsport";
+    state.path = segs.length ? kebabToCamel(segs[0]) : "";
+    state.params = segs.length > 1 ? [{ key: "id", kind: "text", value: segs.slice(1).join("/") }] : [];
+    matched = path ? { label: "Estimativa (rota nao mapeada)", exact: false } : { label: "Home do app", exact: true };
+  }
+
+  state.match = matched;
+  syncControls();
 }
 
-/* ---------------------------------------------------------------
-   Render preset params for the active section
-----------------------------------------------------------------*/
-function renderPresetParams() {
-  const section = currentSection();
-  presetState = {};
-  presetParamsBox.innerHTML = "";
-
-  // toggle custom path field
-  customPathField.hidden = !section.custom;
-  sectionHint.textContent = section.hint || "";
-
-  section.params.forEach((p) => {
-    if (p.kind === "bool") {
-      presetState[p.key] = !!p.value;
-      const row = document.createElement("div");
-      row.className = "param-bool";
-      row.innerHTML = `
-        <div class="pb-text">
-          <div class="pb-label">${escapeHtml(p.label)}</div>
-          <div class="pb-key">${escapeHtml(p.key)}=${p.value ? "true" : "false"}</div>
-        </div>
-        <label class="switch">
-          <input type="checkbox" ${p.value ? "checked" : ""} aria-label="${escapeHtml(p.label)}" />
-          <span class="track"></span>
-        </label>`;
-      const input = row.querySelector("input");
-      const keyLabel = row.querySelector(".pb-key");
-      input.addEventListener("change", () => {
-        presetState[p.key] = input.checked;
-        keyLabel.textContent = `${p.key}=${input.checked ? "true" : "false"}`;
-        build();
-      });
-      presetParamsBox.appendChild(row);
-    } else {
-      presetState[p.key] = "";
-      const row = document.createElement("div");
-      row.className = "param-text";
-      row.innerHTML = `
-        <label>${escapeHtml(p.label)}${p.required ? ' <span class="req">*</span>' : ""}</label>
-        <input type="text" placeholder="${escapeHtml(p.placeholder || "")}" autocomplete="off" />`;
-      const input = row.querySelector("input");
-      input.addEventListener("input", () => {
-        presetState[p.key] = input.value;
-        build();
-      });
-      presetParamsBox.appendChild(row);
-    }
-  });
-
+/* =====================================================================
+   SYNC: estado -> controles -> saida
+===================================================================== */
+function syncControls() {
+  marketSel.value = state.market;
+  dlPath.value = state.path;
+  productSeg.querySelectorAll(".seg-btn").forEach((b) => b.classList.toggle("is-active", b.dataset.val === state.product));
+  renderParams();
+  renderMatch();
   build();
 }
 
-/* ---------------------------------------------------------------
-   Custom params builder
-----------------------------------------------------------------*/
-function renderCustomParams() {
-  customParamsBox.innerHTML = "";
-  customState.forEach((c, idx) => {
+function renderMatch() {
+  if (state.match === "empty") { matchRow.innerHTML = '<span class="match-detail">Cole um link para comecar.</span>'; return; }
+  if (state.match === "error") { matchRow.innerHTML = '<span class="tag err">URL invalida</span><span class="match-detail">Verifique o link colado.</span>'; return; }
+  const m = state.match;
+  const cls = m.exact ? "exact" : "guess";
+  const txt = m.exact ? "mapeamento confirmado" : "revise os campos abaixo";
+  matchRow.innerHTML = `<span class="tag ${cls}">${m.exact ? "exato" : "estimativa"}</span>` +
+    `<span class="match-detail">${escapeHtml(m.label)} &middot; ${txt}</span>`;
+  pathHint.textContent = m.exact ? "" : "Caminho deduzido do link \u2014 ajuste se necessario.";
+}
+
+function renderParams() {
+  paramsBox.innerHTML = "";
+  state.params.forEach((c, idx) => {
     const row = document.createElement("div");
     row.className = "cparam" + (c.kind === "bool" ? " is-bool" : "");
 
     const keyInput = document.createElement("input");
-    keyInput.type = "text";
-    keyInput.placeholder = "key";
-    keyInput.value = c.key;
-    keyInput.autocomplete = "off";
+    keyInput.type = "text"; keyInput.placeholder = "chave"; keyInput.value = c.key; keyInput.autocomplete = "off";
     keyInput.addEventListener("input", () => { c.key = keyInput.value; build(); });
 
     const typeWrap = document.createElement("div");
     typeWrap.className = "cp-type";
     const typeSel = document.createElement("select");
-    typeSel.innerHTML = `<option value="text">value</option><option value="bool">checkbox</option>`;
+    typeSel.innerHTML = '<option value="text">valor</option><option value="bool">checkbox</option>';
     typeSel.value = c.kind;
     typeSel.addEventListener("change", () => {
       c.kind = typeSel.value;
       if (c.kind === "bool" && typeof c.value !== "boolean") c.value = false;
       if (c.kind === "text" && typeof c.value === "boolean") c.value = "";
-      renderCustomParams();
-      build();
+      renderParams(); build();
     });
     typeWrap.appendChild(typeSel);
 
     let valueControl;
     if (c.kind === "bool") {
+      valueControl = document.createElement("div");
+      valueControl.className = "bool-wrap";
       const sw = document.createElement("label");
       sw.className = "switch";
-      sw.innerHTML = `<input type="checkbox" ${c.value ? "checked" : ""} aria-label="value" /><span class="track"></span>`;
+      sw.innerHTML = `<input type="checkbox" ${c.value ? "checked" : ""} aria-label="valor de ${escapeHtml(c.key)}" /><span class="track"></span>`;
       sw.querySelector("input").addEventListener("change", (e) => { c.value = e.target.checked; build(); });
-      valueControl = sw;
+      valueControl.appendChild(sw);
     } else {
       valueControl = document.createElement("input");
-      valueControl.type = "text";
-      valueControl.placeholder = "value";
+      valueControl.type = "text"; valueControl.placeholder = "valor";
       valueControl.value = typeof c.value === "string" ? c.value : "";
       valueControl.autocomplete = "off";
       valueControl.addEventListener("input", () => { c.value = valueControl.value; build(); });
     }
 
     const remove = document.createElement("button");
-    remove.type = "button";
-    remove.className = "cp-remove";
-    remove.textContent = "×";
-    remove.setAttribute("aria-label", "Remove parameter");
-    remove.addEventListener("click", () => {
-      customState.splice(idx, 1);
-      renderCustomParams();
-      build();
-    });
+    remove.type = "button"; remove.className = "cp-remove"; remove.textContent = "\u00D7";
+    remove.setAttribute("aria-label", "Remover parametro");
+    remove.addEventListener("click", () => { state.params.splice(idx, 1); renderParams(); build(); });
 
     row.append(keyInput, typeWrap, valueControl, remove);
-    customParamsBox.appendChild(row);
+    paramsBox.appendChild(row);
   });
 }
 
-/* ---------------------------------------------------------------
-   Copy + toast
-----------------------------------------------------------------*/
+/* =====================================================================
+   BUILD: monta o deeplink
+===================================================================== */
+function build() {
+  const scheme = state.market + state.product + "://";
+  const path = state.path;
+
+  const parts = [];
+  state.params.forEach((p) => {
+    const key = (p.key || "").trim();
+    if (!key) return;
+    if (p.kind === "bool") parts.push({ key, value: p.value ? "true" : "false" });
+    else {
+      const v = String(p.value || "").trim();
+      if (v) parts.push({ key, value: v });
+    }
+  });
+
+  const query = parts.map((p) => `${p.key}=${p.value}`).join("&");
+  const plain = scheme + path + (query ? "?" + query : "");
+
+  let html = `<span class="tok-scheme">${escapeHtml(scheme)}</span><span class="tok-path">${escapeHtml(path)}</span>`;
+  parts.forEach((p, i) => {
+    html += i === 0 ? '<span class="tok-sep">?</span>' : '<span class="tok-sep">&amp;</span>';
+    html += `<span class="tok-key">${escapeHtml(p.key)}</span><span class="tok-sep">=</span><span class="tok-val">${escapeHtml(p.value)}</span>`;
+  });
+  heroLink.innerHTML = html;
+  encodedLink.textContent = encodeURIComponent(plain);
+  heroLink.dataset.plain = plain;
+}
+
+/* =====================================================================
+   COPIAR + TOAST
+===================================================================== */
 function toast(msg) {
   const t = $("toast");
-  t.innerHTML = `<span class="check">✓</span>${escapeHtml(msg)}`;
+  t.innerHTML = `<span class="check">\u2713</span>${escapeHtml(msg)}`;
   t.classList.add("show");
   clearTimeout(toast._t);
   toast._t = setTimeout(() => t.classList.remove("show"), 1800);
 }
-
 async function copy(text, label) {
-  try {
-    await navigator.clipboard.writeText(text);
-  } catch {
+  if (!text) return;
+  try { await navigator.clipboard.writeText(text); }
+  catch {
     const ta = document.createElement("textarea");
-    ta.value = text;
-    ta.style.position = "fixed";
-    ta.style.opacity = "0";
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand("copy");
-    document.body.removeChild(ta);
+    ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta);
   }
-  toast(label + " copied");
+  toast(label + " copiado");
 }
 
-/* ---------------------------------------------------------------
-   Events
-----------------------------------------------------------------*/
+/* =====================================================================
+   EVENTOS
+===================================================================== */
+urlInput.addEventListener("input", parseUrl);
+marketSel.addEventListener("change", () => { state.market = marketSel.value; build(); });
+dlPath.addEventListener("input", () => { state.path = dlPath.value.trim(); build(); });
 productSeg.addEventListener("click", (e) => {
   const btn = e.target.closest(".seg-btn");
   if (!btn) return;
-  product = btn.dataset.val;
+  state.product = btn.dataset.val;
   productSeg.querySelectorAll(".seg-btn").forEach((b) => b.classList.toggle("is-active", b === btn));
   build();
 });
-
-domainSel.addEventListener("change", build);
-sectionSel.addEventListener("change", renderPresetParams);
-customPathInput.addEventListener("input", build);
-
-$("addParam").addEventListener("click", () => {
-  customState.push({ key: "", kind: "text", value: "" });
-  renderCustomParams();
-});
-
+$("addParam").addEventListener("click", () => { state.params.push({ key: "", kind: "text", value: "" }); renderParams(); build(); });
 $("copyLink").addEventListener("click", () => copy(heroLink.dataset.plain || "", "Deeplink"));
-$("copyEncoded").addEventListener("click", () => copy(encodedLink.textContent || "", "Encoded link"));
+$("copyEncoded").addEventListener("click", () => copy(encodedLink.textContent || "", "Link encoded"));
 
-/* ---------------------------------------------------------------
-   Boot
-----------------------------------------------------------------*/
-renderPresetParams();
-renderCustomParams();
+/* boot */
+parseUrl();
